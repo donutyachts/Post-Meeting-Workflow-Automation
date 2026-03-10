@@ -54,11 +54,13 @@ Always reference the specific spec section number in every prompt. This anchors 
 
 ## After Every Build Step
 
-After each major component is built, ask Claude Code to verify its own output against the spec:
+Always combine the build instruction and self-review into a single prompt. End every build prompt with:
 
-> "Review what you just built against Section X of the spec and list any gaps or deviations."
+>"After building, review your output against Section X of the spec and list any gaps or deviations."
 
-Do this after every component — not just at the end. Gaps compound quickly if left unchecked.
+Do not ask for the self-review in a separate follow-up prompt — Claude Code has full context of what it just built within the same session, making the review more accurate. Splitting them into two prompts wastes a round-trip and risks context drift.
+
+When the self-review output comes back, paste it into your spec session before proceeding to the next build step. Gaps compound quickly if left unchecked.
 
 ---
 
