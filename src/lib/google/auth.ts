@@ -13,7 +13,10 @@ import { google } from "googleapis";
  * could not be refreshed (user must re-authenticate).
  */
 export async function getGoogleAccessToken(req: NextRequest): Promise<string> {
-  const token = await getToken({ req });
+  const token = await getToken({ 
+    req,
+    secret: process.env.NEXTAUTH_SECRET
+  });
 
   if (!token) {
     throw new Error("Unauthenticated: no session found.");
