@@ -348,3 +348,115 @@ The spec should explicitly state that an empty request body (no fields provided)
 
 **Resolution:**
 Not yet applied. The PATCH handler should check that at least one recognised field is present in the body before calling `updateProject`.
+
+---
+
+## Amendment 018
+
+**Date:** 2026-03-10
+**Section:** 5.1 — Project / 3.9 — Project Management / 6 — GET, POST, PATCH /api/projects
+**Type:** Addition
+**Status:** Applied — code updated, spec update required
+
+**What the spec currently says:**
+Section 5.1 defines the `Project` type with four user-configurable fields: `name`, `slack_channel_id`, `destination_type`, `destination_id`. Section 3.9 lists the same four fields as the contents of a project configuration. Section 6's `GET /api/projects` response, `POST /api/projects` request body, and `PATCH /api/projects/[id]` patchable field list all reflect only these four fields. The approval screen was intended to display "the target Slack channel name and destination (Notion DB or Sheet name)" but the spec provided no data source for these human-readable names — the Project model stored only IDs.
+
+**What it should say:**
+The `Project` type must include two additional required string fields:
+- `slack_channel_name: string` — human-readable Slack channel name entered by the user, stored without `#` prefix (e.g. `"brand-unification"`). Displayed on the approval screen as `#brand-unification`.
+- `destination_name: string` — human-readable name for the Notion database or Google Sheet (e.g. `"Brand Unification DB"`). Displayed on the approval screen as-is.
+
+Both fields must be required in the `POST /api/projects` request body, included in the `GET /api/projects` response, and accepted as patchable fields in `PATCH /api/projects/[id]`. The Supabase `projects` table must have corresponding columns.
+
+**Resolution:**
+- `src/types/project.ts`: added `slack_channel_name: string` and `destination_name: string` to `Project`. `CreateProjectInput` and `UpdateProjectInput` pick them up automatically via `Omit` and `Partial`.
+- `src/app/api/projects/route.ts`: POST validation now requires both new fields; both are passed to `createProject()`.
+- `src/app/api/projects/[id]/route.ts`: no code change — PATCH passes the body through `UpdateProjectInput` which now includes both fields.
+- `src/app/projects/page.tsx`: form updated with `slack_channel_name` and `destination_name` inputs; read-only card updated to display both.
+- `src/app/workflow/approve/page.tsx`: approval screen now renders `#project.slack_channel_name` and `project.destination_name` without any API call.
+
+---
+
+## Amendment 019
+
+**Date:** 2026-03-10
+**Section:** 3.6 — Approval UI
+**Type:** Bug fix
+**Status:** Applied
+
+**What the spec currently says:**
+"The app presents the generated summary and structured data records **side by side** on the approval screen."
+
+**What was built:**
+The initial implementation rendered the summary textarea above the structured records table in a single-column stacked layout. The spec's "side by side" requirement was not met.
+
+**Resolution:**
+`src/app/workflow/approve/page.tsx`: the summary and records sections are now wrapped in a `display: grid; grid-template-columns: 1fr 1fr` container. Summary occupies the left column; records occupy the right column. An `approve-cols` CSS class with a `@media (max-width: 720px)` rule in `globals.css` collapses the grid to a single column on narrow viewports per Section 4.5's "must not be broken on mobile" requirement.
+
+---
+
+## Amendment 020
+
+**Date:** 2026-03-10
+**Section:** 4.5 — Usability
+**Type:** Bug fix
+**Status:** Applied
+
+**What the spec currently says:**
+"All destructive or irreversible actions (**Approve & Post**, Discard) must require a single explicit confirmation before executing."
+
+**What was built:**
+`handleDiscard` called `confirm()` before proceeding. `handleApprove` proceeded immediately on button click with no confirmation dialog — the spec's requirement for Approve & Post was not implemented.
+
+**Resolution:**
+`src/app/workflow/approve/page.tsx`: `handleApprove` now calls `confirm("Post summary to Slack and write records to the destination? This cannot be undone.")` before any validation or API call. If the user cancels, the function returns immediately without side effects.
+
+---
+
+## Amendment 021
+
+**Date:** 2026-03-10
+**Section:** 3.7 — Slack Posting / 3.8 — Notion / Google Sheets Writing
+**Type:** Omission
+**Status:** Applied — additions made, spec update required
+
+**What the spec currently says:**
+Section 3.7: "If the Slack API call fails, the app displays an error and does not mark the run as successfully delivered; the user can retry."
+Section 3.8: "If the write call fails, the app displays an error and does not mark the run as successfully delivered; the user can retry independently of the Slack post (i.e., if Slack succeeded but Sheets failed, only the Sheets write is retried). Retry is manual — the user clicks a retry button on the error screen."
+
+The spec defines no API mechanism for retrying a single delivery operation independently. Section 6's `POST /api/workflow/approve` contract shows only the initial approval request shape with no mention of a retry mode.
+
+**What it should say:**
+Three additions are required:
+
+1. `POST /api/workflow/approve` must accept an optional `retry_only?: "slack" | "destination"` field in the request body. When present, only the named operation is attempted; the other is skipped and its stored status in Supabase is not modified.
+
+2. A partial delivery status update function is needed that writes only the fields relevant to the retried operation. The existing `updateWorkflowRunDelivery` requires all four delivery fields and would incorrectly overwrite the already-settled status of the non-retried operation.
+
+3. The post-approval result screen must show a per-operation retry button when that operation's status is `"failed"`, and must not show a retry button when the status is `"success"` or `"skipped"`. A 207 partial-success response must surface the failed operation's retry button while the succeeded operation displays as done.
+
+**Resolution:**
+- `src/lib/supabase/queries/workflow-runs.ts`: added `patchWorkflowRunDelivery(id, updates)` which accepts a partial set of delivery status fields and calls Supabase `.update()` with only those fields, leaving the others unchanged.
+- `src/app/api/workflow/approve/route.ts`: added `retry_only?: "slack" | "destination"` to `ApproveRequest`. When `retry_only === "slack"`: only the Slack post runs; `patchWorkflowRunDelivery` is called with only `slack_status` and `slack_thread_ts`. When `retry_only === "destination"`: only the destination write runs; `patchWorkflowRunDelivery` is called with only `destination_status`. The normal approval path (both operations) is unchanged.
+- `src/app/workflow/approve/page.tsx`: the done screen now renders a per-operation row with a retry button when `status === "failed"`. `handleRetrySlack` and `handleRetryDestination` each call the approve route with the appropriate `retry_only` flag and merge only the returned status fields back into `deliveryResult` state, leaving the other operation's status untouched in local state. `resolvedSlackThreadTs` is saved to component state during initial approval so retries can reuse the same `thread_ts`.
+
+---
+
+## Amendment 022
+
+**Date:** 2026-03-10
+**Section:** 3.2 — Gemini Notes Doc Matching
+**Type:** Omission
+**Status:** Open — frontend implementation gap, spec clarification required
+
+**What the spec currently says:**
+"If multiple matches are found, the app applies tiebreakers in this order: (1) Parse the date from the top of the Google Doc and match against the Calendar event date; (2) Parse the meeting duration from the transcript and match against the Calendar event duration; (3) If ambiguity remains, surface all remaining candidates for manual selection."
+
+**What was built:**
+The confirm screen (`src/app/workflow/confirm/page.tsx`) reads the raw candidate list from sessionStorage (populated by the trigger route) and displays all candidates unconditionally as a radio-button table. The `POST /api/workflow/match` route — which implements the date tiebreaker — is never called from the frontend. The tiebreaker logic exists in the route but is dead code from the client's perspective.
+
+**What it should say:**
+The confirm screen must call `POST /api/workflow/match` when the trigger response contains more than one candidate, passing the event date/duration and the candidate list. If the match route returns a single `resolved` doc, that doc should be pre-selected for the user to confirm. Only if `resolved` is null (ambiguity remains after tiebreaking) should the full candidate list be presented for manual selection.
+
+**Resolution:**
+Not yet applied. The confirm screen must be updated to call `/api/workflow/match` before rendering the doc selection UI when `matches.length > 1`.
