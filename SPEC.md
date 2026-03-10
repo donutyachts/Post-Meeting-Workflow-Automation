@@ -398,7 +398,44 @@ type StructuredDataRecord = {
 }
 ```
 
-### 5.4 Notion Database Schema
+### 5.4 AiRecord
+
+Not persisted. Represents a single structured data record as returned directly by the AI provider, before the route handler enriches it with `meeting_title` and `meeting_date`. The `/api/workflow/generate` route handler is responsible for converting each `AiRecord` to a `StructuredDataRecord` before writing to Notion or Google Sheets.
+
+```typescript
+type AiRecord = {
+  category: RecordCategory;
+  description: string;        // single-sentence, declarative
+  owner: string | null;
+  due_date: string | null;    // ISO 8601 date or null
+}
+```
+
+### 5.5 RecordCategory
+
+```typescript
+type RecordCategory =
+  | "Conclusions"
+  | "Action items"
+  | "Changes"
+  | "Decisions"
+  | "Things to know"
+  | "Risks"
+  | "Problems";
+```
+
+5.6 GenerateResult
+
+The return type of `generateSummary()` in `lib/ai/generate.ts`.
+
+```typescript
+type GenerateResult = {
+  summary: string;       // formatted summary string per Section 3.5.1
+  records: AiRecord[];
+}
+```
+
+### 5.7 Notion Database Schema
 
 The target Notion database must contain the following properties. The app does not create the database — it must be created manually and its ID added to the project configuration.
 
@@ -411,7 +448,7 @@ Meeting      → Text property      (maps to: meeting_title)
 Meeting Date → Date property      (maps to: meeting_date)
 ```
 
-### 5.5 Google Sheets Schema
+### 5.8 Google Sheets Schema
 
 The target Google Sheet must contain a header row with the following columns in this exact order. The app does not create the sheet — it must be created manually and its ID added to the project configuration.
 
