@@ -1007,8 +1007,11 @@ The app is deployed to Vercel. A Vercel account is required, and the project mus
 
 ---
 
-**8. Workflow state preservation on token expiry
-*Status:* Deferred. When the middleware detects a RefreshTokenError and redirects to sign-in, any in-progress workflow state (confirmed doc, selected project, generated summary) is lost. Section 4.3 requires state preservation "where possible" — this is acknowledged as currently unaddressed. Revisit when building the approval screen (Section 3.6); options include sessionStorage, URL params, or a short-lived server-side store.
+**8. Workflow state preservation on token expiry**
+
+When the middleware detects a RefreshTokenError and redirects to sign-in, any in-progress workflow state (confirmed doc, selected project, generated summary) is lost. Section 4.3 requires state preservation "where possible" — this is acknowledged as currently unaddressed. Revisit when building the approval screen (Section 3.6); options include sessionStorage, URL params, or a short-lived server-side store.
+
+*Status:* Deferred. 
 
 ## 11. Appendix
 
