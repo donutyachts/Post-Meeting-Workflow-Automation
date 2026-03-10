@@ -133,6 +133,7 @@ User clicks Trigger
 
 - The app provides a single **Trigger** button on the home screen to initiate the workflow
 - On trigger, the app calls the Google Calendar API to fetch the most recent event where the authenticated user is the organizer
+- The Calendar API does not support descending orderBy for event queries; the implementation fetches events from the past 30 days ordered ascending by start time and iterates in reverse to identify the most recent qualifying event. If no organizer-owned event is found within the 30-day window, the app returns NO_RECENT_EVENT.
 - The event title, date, start time, and duration are extracted and used in subsequent steps
 - If no qualifying event is found, the app displays an error message and offers a manual Doc selection fallback
 

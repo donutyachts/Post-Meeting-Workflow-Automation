@@ -163,3 +163,47 @@ The spec should require that `category` values in the AI response are validated 
 
 **Resolution:**
 `parseAndValidate` in `src/lib/ai/generate.ts` now iterates `records`, checks each `category` against `RECORD_CATEGORIES`, and throws with the record index and invalid value if validation fails.
+
+---
+
+## Amendment 009
+
+**Date:** 2026-03-10
+**Section:** 3.4 — Transcript Extraction
+**Type:** Omission
+**Status:** Applied
+
+**What the spec currently says:**
+"The boundary between the Gemini-generated content and the raw transcript is identified by locating the `# 📖 Transcript` heading in the document."
+
+The spec does not specify that the match must be constrained to heading-styled paragraphs. The `#` prefix implies a Markdown H1, but gives no guidance on how this maps to Google Docs paragraph styles.
+
+**What it should say:**
+The transcript boundary detection must match a paragraph whose `paragraphStyle.namedStyleType` is `HEADING_1` or `HEADING_2` AND whose text content includes `📖 Transcript`. Matching on text content alone would incorrectly trigger on any body paragraph that happened to contain that string (e.g. a quoted reference to the heading later in the document).
+
+**Resolution:**
+`src/lib/google/docs.ts` checks both `namedStyleType === "HEADING_1" || "HEADING_2"` and `text.includes("📖 Transcript")` before setting the transcript boundary. Both conditions must be true.
+
+---
+
+## Amendment 010
+
+**Date:** 2026-03-10
+**Section:** 3.2 — Gemini Notes Doc Matching / 6 — POST /api/workflow/trigger
+**Type:** Spec ambiguity
+**Status:** Open — spec update required, no code change needed
+
+**What the spec currently says:**
+Section 3.2 describes the date tiebreaker as: "Parse the date from the top of the Google Doc and match against the Calendar event date." The Section 6 trigger response shape includes a `doc_date` field on each match candidate.
+
+The spec does not clarify what `doc_date` represents in the trigger response — whether it is the Drive file's `createdTime` or the date parsed from the document's content.
+
+**What it should say:**
+The spec should distinguish between two separate dates:
+1. `doc_date` in the trigger response — populated from Drive's `createdTime` field; available without fetching the document content and used as a fast initial filter.
+2. The date parsed from the top of the document body — used by the `/api/workflow/match` tiebreaker logic, which must fetch Doc content to obtain it.
+
+These are not the same value. A Gemini Notes Doc's `createdTime` is the moment the file was created in Drive, which matches the meeting date in practice but is not guaranteed to.
+
+**Resolution:**
+`src/lib/google/drive.ts` populates `doc_date` from `createdTime`. The `/api/workflow/match` route (not yet built) is responsible for fetching document content and parsing the in-document date for tiebreaking.
