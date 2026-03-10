@@ -113,3 +113,53 @@ The spec should define what "workflow state" means in this context and how it is
 
 **Resolution:**
 No mechanism exists yet. Silent token refresh in the `jwt` callback handles expiry in most cases without any redirect. The re-authentication redirect path (when refresh fails) currently loses all in-progress workflow state. State preservation must be addressed when the workflow screens are built.
+
+---
+
+## Amendment 007
+
+**Date:** 2026-03-10
+**Section:** 3.5.1 — AI Prompt / 5 — Data Models
+**Type:** Omission
+**Status:** Open — spec update required, no code change needed
+
+**What the spec currently says:**
+Section 7 names the return type of `generateSummary` as `Promise<GenerateResult>` but never defines the shape of `GenerateResult`. No definition appears in Section 5 (Data Models) or anywhere else in the spec.
+
+**What it should say:**
+`GenerateResult` should be defined explicitly in Section 5 alongside the other data types:
+```typescript
+type GenerateResult = {
+  summary: string;      // formatted summary string per Section 3.5.1
+  records: AiRecord[];  // records without meeting_title / meeting_date
+}
+
+type AiRecord = {
+  category: RecordCategory;
+  description: string;
+  owner: string | null;
+  due_date: string | null;
+}
+```
+`AiRecord` is distinct from `StructuredDataRecord` because the AI does not return `meeting_title` or `meeting_date` — those fields are added by the `/api/workflow/generate` route handler before the records are returned to the client.
+
+**Resolution:**
+`GenerateResult` and `AiRecord` are defined in `src/lib/ai/generate.ts` with shapes inferred from the Section 6 `/api/workflow/generate` response contract. No code change needed.
+
+---
+
+## Amendment 008
+
+**Date:** 2026-03-10
+**Section:** 3.5.1 — AI Prompt
+**Type:** Omission
+**Status:** Applied
+
+**What the spec currently says:**
+Section 3.5.1 defines the AI response shape and the category taxonomy but does not specify whether the application should validate that returned category values are members of the known taxonomy before using them downstream.
+
+**What it should say:**
+The spec should require that `category` values in the AI response are validated against the taxonomy (`Conclusions`, `Action items`, `Changes`, `Decisions`, `Things to know`, `Risks`, `Problems`) before the response is accepted. Invalid values must be rejected with a clear error identifying which record failed, rather than propagating silently to Notion or Sheets where they would cause a write failure with a less actionable error.
+
+**Resolution:**
+`parseAndValidate` in `src/lib/ai/generate.ts` now iterates `records`, checks each `category` against `RECORD_CATEGORIES`, and throws with the record index and invalid value if validation fails.
