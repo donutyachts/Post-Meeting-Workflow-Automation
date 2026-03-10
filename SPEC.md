@@ -1004,3 +1004,78 @@ The app is deployed to Vercel. A Vercel account is required, and the project mus
 *Decision needed:* Confirm whether a personal or organisational Vercel account will be used, and confirm that a GitHub repository will be created for the project.
 
 *Decision:* Confirmed. A personal Vercel account will be used.
+
+## 11. Appendix
+
+### 11.1 File and Folder Structure
+
+The following is the expected file and folder structure for this project. Claude Code must generate this structure exactly before writing any code. Any deviations must be reviewed and approved before proceeding.
+
+```
+post-meeting-workflow-automation/
+├── .env.example
+├── .env.local                          # gitignored
+├── .gitignore
+├── CONTRIBUTING.md
+├── README.md
+├── SETUP.md
+├── SPEC.md
+├── next.config.ts
+├── next-env.d.ts
+├── tsconfig.json
+├── eslint.config.mjs
+├── package.json
+├── package-lock.json
+├── public/
+└── src/
+    ├── app/
+    │   ├── layout.tsx                  # root layout
+    │   ├── page.tsx                    # trigger screen (home)
+    │   ├── confirm/
+    │   │   └── page.tsx                # doc confirmation screen
+    │   ├── project/
+    │   │   └── page.tsx                # project selection screen
+    │   ├── approve/
+    │   │   └── page.tsx                # approval screen
+    │   ├── projects/
+    │   │   └── page.tsx                # project management screen
+    │   ├── runs/
+    │   │   └── page.tsx                # workflow run history screen
+    │   └── api/
+    │       ├── auth/
+    │       │   └── [...nextauth]/
+    │       │       └── route.ts        # NextAuth.js handler
+    │       ├── workflow/
+    │       │   ├── trigger/
+    │       │   │   └── route.ts        # POST /api/workflow/trigger
+    │       │   ├── match/
+    │       │   │   └── route.ts        # POST /api/workflow/match
+    │       │   ├── generate/
+    │       │   │   └── route.ts        # POST /api/workflow/generate
+    │       │   └── approve/
+    │       │       └── route.ts        # POST /api/workflow/approve
+    │       ├── projects/
+    │       │   ├── route.ts            # GET, POST /api/projects
+    │       │   └── [id]/
+    │       │       └── route.ts        # PATCH, DELETE /api/projects/[id]
+    │       └── runs/
+    │           └── route.ts            # GET /api/runs
+    ├── lib/
+    │   ├── ai/
+    │   │   └── generate.ts             # AI provider abstraction layer
+    │   ├── google/
+    │   │   ├── calendar.ts             # Google Calendar API client
+    │   │   ├── drive.ts                # Google Drive API client
+    │   │   ├── docs.ts                 # Google Docs API client
+    │   │   └── sheets.ts               # Google Sheets API client
+    │   ├── slack/
+    │   │   └── post.ts                 # Slack API client
+    │   ├── notion/
+    │   │   └── write.ts                # Notion API client
+    │   ├── supabase/
+    │   │   └── client.ts               # Supabase client
+    │   └── auth/
+    │       └── config.ts               # NextAuth.js configuration
+    └── types/
+        └── index.ts                    # Project, WorkflowRun, StructuredDataRecord types
+```
