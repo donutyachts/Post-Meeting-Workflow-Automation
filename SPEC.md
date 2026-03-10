@@ -860,14 +860,13 @@ Integration and end-to-end tests only. No unit tests unless explicitly requested
 - Run this test against both providers independently to validate provider parity
 - If `generate.ts` initialises the provider client at module load time, the integration test must call `vi.resetModules()` and dynamically import `generate.ts` after stubbing `AI_PROVIDER`, matching the pattern used in the Slack and Notion client tests.
 
-**Slack posting**
+**Slack posting — malformed thread_ts**
 
-- Input: approved summary, test Slack channel ID, no `slack_thread_ts`
-- Expected: message appears in test channel as a top-level message
-- Input: approved summary, test Slack channel ID, valid `slack_thread_ts`
-- Expected: message appears as a thread reply to the correct parent message
-- Input: malformed `slack_thread_ts`
-- Expected: `INVALID_THREAD_LINK` error returned; no message posted
+- Test must be implemented as a route-level integration test that calls POST /api/workflow/approve directly via a NextRequest
+- Input: approved summary and records; slack_thread_ts set to a malformed value (e.g., a full Slack URL, an integer without a decimal, or a non-numeric string)
+- Expected: HTTP response status is 422; response body contains error: "INVALID_THREAD_LINK"; no Slack API call is made
+- Also cover the inverse: valid slack_thread_ts format (digits.digits) and absent slack_thread_ts must not trigger a 422
+- Validating the thread link regex constant in isolation without asserting the route's HTTP response does not satisfy this test case
 
 **Notion writing**
 
@@ -881,8 +880,11 @@ Integration and end-to-end tests only. No unit tests unless explicitly requested
 
 **Partial approval failure**
 
-- Input: valid summary and records; Notion API key intentionally invalid
-- Expected: Slack post succeeds; destination write fails; response status is 207; `slack_status: "success"`, `destination_status: "failed"`
+- Test must be implemented as a route-level integration test that calls POST /api/workflow/approve directly via a NextRequest
+- Input: valid summary and records; Notion API key intentionally invalid; real Slack bot token present
+- Expected: HTTP response status is 207; response body contains slack_status: "success", destination_status: "failed", and destination_error matching NOTION_API_ERROR
+- The Slack post must execute against the real test channel; the Notion write must be the live failure path, not a mock
+- Testing the Notion client function in isolation without asserting the route's HTTP response does not satisfy this test case
 
 ### 8.3 End-to-End Tests
 
