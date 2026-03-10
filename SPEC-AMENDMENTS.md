@@ -207,3 +207,144 @@ These are not the same value. A Gemini Notes Doc's `createdTime` is the moment t
 
 **Resolution:**
 `src/lib/google/drive.ts` populates `doc_date` from `createdTime`. The `/api/workflow/match` route (not yet built) is responsible for fetching document content and parsing the in-document date for tiebreaking.
+
+---
+
+## Amendment 011
+
+**Date:** 2026-03-10
+**Section:** 6 — POST /api/workflow/generate
+**Type:** Omission
+**Status:** Applied — additions made, spec update required
+
+**What the spec currently says:**
+The generate request body is `{ doc_id, meeting_title, meeting_date, project_id }`. The generate response is `{ summary, records }` where records contain only `{ category, description, owner, due_date }`.
+
+**What it should say:**
+Three additions are required by the implementation:
+
+1. `meeting_duration_minutes` must be added to the request body. The `workflow_runs` table requires this field as `NOT NULL`. It is available on the client from the trigger phase but the spec never specifies when or how it is forwarded to the generate step.
+
+2. `run_id` must be added to the response. The approve and discard routes reference a `run_id` that must have been created before approval. The generate route creates the run record and must return its ID. Without this, the approve/discard routes have no run to update.
+
+3. Records in the response must include `meeting_title` and `meeting_date`. The approve route passes records directly to Notion and Google Sheets, which require these fields (Section 5.7, 5.8). The spec's generate response shows AI-only record fields, but the full `StructuredDataRecord` shape is what the approve route needs.
+
+**Resolution:**
+`src/app/api/workflow/generate/route.ts` accepts `meeting_duration_minutes` in the request, creates the `workflow_runs` record, enriches records with `meeting_title`/`meeting_date`, and returns `{ run_id, summary, records }`.
+
+---
+
+## Amendment 012
+
+**Date:** 2026-03-10
+**Section:** 6 — POST /api/workflow/approve / 3.6 — Approval UI
+**Type:** Omission
+**Status:** Applied — discard route created, spec update required
+
+**What the spec currently says:**
+Section 3.6 states: "Discard cancels the workflow run without posting or writing anything; the run is logged as discarded." Section 6 defines no discard API endpoint. The only workflow route defined is `POST /api/workflow/approve`.
+
+**What it should say:**
+A dedicated `POST /api/workflow/discard` route must be defined in Section 6 with the following contract:
+- Request: `{ run_id: string }`
+- Response 200: `{ discarded: true }`
+- Error 400: `VALIDATION_ERROR` if `run_id` is missing
+- Error 404: `NOT_FOUND` if the run does not exist
+
+**Resolution:**
+`src/app/api/workflow/discard/route.ts` created. Sets `approval_status: "discarded"`, `slack_status: "skipped"`, `destination_status: "skipped"` on the run record without calling Slack, Notion, or Sheets.
+
+---
+
+## Amendment 013
+
+**Date:** 2026-03-10
+**Section:** 6 — POST /api/workflow/approve
+**Type:** Spec ambiguity
+**Status:** Open — spec decision required, implementation chose 207
+
+**What the spec currently says:**
+Section 6 defines both a `207` partial-success response (when one of Slack or destination fails) and standalone `502` error states for `SLACK_API_ERROR`, `NOTION_API_ERROR`, and `SHEETS_API_ERROR`. This is contradictory: Section 4.3 requires both operations to be attempted independently regardless of individual failures, but standalone 502 states imply a single-operation failure can terminate the route.
+
+**What it should say:**
+The spec should remove the standalone `502` error states from the approve route and replace them with a clarification that all delivery failures are reported via the `207` partial-success response shape. The `502` status code is inappropriate for an endpoint that must always attempt both operations.
+
+**Resolution:**
+The implementation always attempts both Slack and destination independently and returns `207` if either fails, `200` if both succeed. The `502` error states defined in Section 6 are never produced by this route.
+
+---
+
+## Amendment 014
+
+**Date:** 2026-03-10
+**Section:** 6 — POST /api/workflow/approve
+**Type:** Bug fix
+**Status:** Applied
+
+**What the spec currently says:**
+Section 6: "422 — Slack thread link malformed or message not found: `{ error: 'INVALID_THREAD_LINK' }`". The spec does not specify where thread_ts extraction and validation occur.
+
+**What it should say:**
+The spec should clarify that `slack_thread_ts` in the approve request is the already-extracted timestamp value (not the raw Slack message URL), and that the approve route must validate it matches the format `\d+\.\d+` before any posting begins. A malformed value must return 422 immediately without calling Slack or the destination.
+
+**Resolution:**
+`src/app/api/workflow/approve/route.ts` validates `slack_thread_ts` against `/^\d+\.\d+$/` before the Slack call. Invalid values return 422 with `INVALID_THREAD_LINK` and short-circuit before any posting.
+
+---
+
+## Amendment 015
+
+**Date:** 2026-03-10
+**Section:** 6 — POST /api/workflow/match
+**Type:** Omission
+**Status:** Open — spec update required, implementation inferred from Section 3.2
+
+**What the spec currently says:**
+Section 2 lists `/api/workflow/match` as a backend component but Section 6 provides no request/response contract for it.
+
+**What it should say:**
+Section 6 must define the full contract for `POST /api/workflow/match`:
+- Request: `{ event: { date, duration_minutes }, candidates: DriveMatch[] }`
+- Response: `{ resolved: DriveMatch | null, ambiguous: DriveMatch[] }`
+- Error 400: `VALIDATION_ERROR` if required fields are missing
+
+Additionally, the spec should clarify the two-step tiebreaker: date matching uses `doc_date` from Drive candidates (fast, no Doc fetch required); duration matching requires fetching Doc content and is the responsibility of this route, not the trigger route.
+
+**Resolution:**
+`src/app/api/workflow/match/route.ts` implements date-based tiebreaking only. Duration tiebreaking is not implemented — it requires fetching Doc content and is noted inline as a gap.
+
+---
+
+## Amendment 016
+
+**Date:** 2026-03-10
+**Section:** 6 — GET /api/runs
+**Type:** Deviation (noted, not changed)
+**Status:** Accepted as-is
+
+**What the spec currently says:**
+The `GET /api/runs` response shows a subset of `WorkflowRun` fields: `id`, `meeting_title`, `meeting_date`, `project_id`, `ai_provider`, `approval_status`, `slack_status`, `destination_status`, `created_at`.
+
+**What it should say:**
+The spec should either confirm this is the complete response shape (requiring a `select()` with named columns) or acknowledge that the full row is returned. The current implementation uses `select("*")`, which also returns `meeting_duration_minutes`, `gemini_doc_id`, and `slack_thread_ts`.
+
+**Resolution:**
+No code change. The extra fields are harmless and may be useful to the run history UI. The spec should be updated to reflect the actual response shape.
+
+---
+
+## Amendment 017
+
+**Date:** 2026-03-10
+**Section:** 6 — PATCH /api/projects/[id]
+**Type:** Omission
+**Status:** Open — spec update required, implementation gap noted
+
+**What the spec currently says:**
+"Request: any subset of `name`, `slack_channel_id`, `destination_type`, `destination_id`." The spec does not state whether an empty body is valid.
+
+**What it should say:**
+The spec should explicitly state that an empty request body (no fields provided) is invalid and must return `400 VALIDATION_ERROR`. Sending an empty update is a no-op that fires a database write and updates `updated_at` without changing any meaningful data.
+
+**Resolution:**
+Not yet applied. The PATCH handler should check that at least one recognised field is present in the body before calling `updateProject`.

@@ -88,3 +88,10 @@ When adding new features after the initial build:
 - Resolve any new open questions before starting the build session
 - Follow the same build order and prompt conventions above
 - Do not ask Claude Code to infer requirements from existing code — always reference the spec explicitly
+
+---
+
+## Known Issues
+
+**Silent 404 on non-existent run_id — `/api/workflow/discard` and any route using `updateWorkflowRunDelivery`**
+`updateWorkflowRunDelivery` calls `.update().eq("id", run_id)` without checking whether a row was matched. A non-existent `run_id` returns 200 instead of 404. Fix by adding a count check to the query. Address this when the Supabase query layer is reviewed — check all routes for the same pattern and fix consistently.

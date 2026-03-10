@@ -518,7 +518,7 @@ Fetches the most recent Google Calendar event where the authenticated user is th
 
 ### POST /api/workflow/generate
 
-Extracts the raw transcript from the confirmed Google Doc and sends it to the AI provider for summary and structured data generation.
+Extracts the raw transcript from the confirmed Google Doc and sends it to the AI provider for summary and structured data generation. Creates a workflow run record in Supabase and returns the run ID for use by the approve route.
 
 **Request**
 
@@ -527,31 +527,41 @@ Extracts the raw transcript from the confirmed Google Doc and sends it to the AI
   "doc_id": "11ZWWv04HAiyVGJ3Bq_t6WHc8nNYPkoTQagxn-k7eoAw",
   "meeting_title": "Review service category mapping (EasyHosting) - Brand Unification",
   "meeting_date": "2026-03-04",
+  "meeting_duration_minutes": 40,
   "project_id": "uuid"
 }
 ```
+
+`meeting_duration_minutes` is derived from the Calendar event returned by `/api/workflow/trigger` and passed forward by the client.
 
 **Response 200**
 
 ```json
 {
+  "run_id": "uuid",
   "summary": ":information_desk_person: Brief notes from today's `Review service category mapping (EasyHosting)` meeting\n*Conclusions*\n• ...\n*Action items*\n• ...",
   "records": [
     {
       "category": "Action items",
       "description": "Eric to send Amy examples of the ecom provisioning issue to check if the script is wrong.",
       "owner": "Eric Arseneault",
-      "due_date": null
+      "due_date": null,
+      "meeting_title": "Review service category mapping (EasyHosting) - Brand Unification",
+      "meeting_date": "2026-03-04"
     },
     {
       "category": "Conclusions",
       "description": "Team re-aligned on the purpose of service category mapping and its impact on Engineering.",
       "owner": null,
-      "due_date": null
+      "due_date": null,
+      "meeting_title": "Review service category mapping (EasyHosting) - Brand Unification",
+      "meeting_date": "2026-03-04"
     }
   ]
 }
 ```
+
+`run_id` is the Supabase UUID of the workflow run record created during this call. It must be passed to `/api/workflow/approve` in the request body. `meeting_title` and `meeting_date` are included on each record so the approve route can write complete records to Notion or Google Sheets without requiring the client to re-supply them.
 
 **Error states**
 
@@ -590,35 +600,34 @@ Posts the approved summary to Slack and writes structured data records to Notion
 ```json
 {
   "slack_status": "success",
-  "destination_status": "success"
+  "slack_error": null,
+  "destination_status": "success",
+  "destination_error": null
 }
 ```
 
-**Response 207 — partial success**
+**Response 207 — one or both operations failed**
 
 ```json
 {
   "slack_status": "success",
+  "slack_error": null,
   "destination_status": "failed",
-  "destination_error": "NOTION_API_ERROR: ..."
+  "destination_error": "NOTION_API_ERROR"
 }
 ```
+Both operations always run independently. Failure of one does not prevent or roll back the other. The 207 response always includes explicit status and error fields for both operations so the caller knows exactly which operation failed without inspecting logs.
 
-**Error states**
+Possible values for slack_error: `SLACK_API_ERROR`, `null`
+
+Possible values for destination_error: `NOTION_API_ERROR`, `SHEETS_API_ERROR`, `null`
+
+**Response 422 — thread link invalid**
 
 ```json
-// 502 — Slack API call failed
-{ "error": "SLACK_API_ERROR", "message": "..." }
-
-// 502 — Notion API call failed
-{ "error": "NOTION_API_ERROR", "message": "..." }
-
-// 502 — Google Sheets API call failed
-{ "error": "SHEETS_API_ERROR", "message": "..." }
-
-// 422 — Slack thread link malformed or message not found
 { "error": "INVALID_THREAD_LINK", "message": "Could not resolve thread_ts from provided Slack link." }
 ```
+Returned before either operation runs if `slack_thread_ts` fails format validation. Nothing is posted or written when this error is returned.
 
 ---
 
