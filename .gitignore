@@ -32,6 +32,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.test.example
+
+# playwright auth state — contains session cookies; never commit
+tests/e2e/auth-state.json
 
 # vercel
 .vercel

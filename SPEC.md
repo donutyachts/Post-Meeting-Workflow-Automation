@@ -858,6 +858,7 @@ Integration and end-to-end tests only. No unit tests unless explicitly requested
 - Expected: all records have a `category` value from the predefined taxonomy only
 - Expected: `summary` string begins with `:information_desk_person: Brief notes from today's`
 - Run this test against both providers independently to validate provider parity
+- If `generate.ts` initialises the provider client at module load time, the integration test must call `vi.resetModules()` and dynamically import `generate.ts` after stubbing `AI_PROVIDER`, matching the pattern used in the Slack and Notion client tests.
 
 **Slack posting**
 

@@ -460,3 +460,138 @@ The confirm screen must call `POST /api/workflow/match` when the trigger respons
 
 **Resolution:**
 Not yet applied. The confirm screen must be updated to call `/api/workflow/match` before rendering the doc selection UI when `matches.length > 1`.
+
+---
+
+## Amendment 023
+
+**Date:** 2026-03-10
+**Section:** 8.2 — Integration Tests / AI provider — summary generation
+**Type:** Spec clarification
+**Status:** Applied — spec updated by author; existing test verified compliant
+
+**What the spec previously said:**
+Section 8.2 described the AI provider test with no guidance on whether `vi.resetModules()` was needed to switch providers between test runs.
+
+**What it now says:**
+"If `generate.ts` initialises the provider client at module load time, the integration test must call `vi.resetModules()` and dynamically import `generate.ts` after stubbing `AI_PROVIDER`, matching the pattern used in the Slack and Notion client tests."
+
+**Resolution:**
+`generate.ts` reads `process.env.AI_PROVIDER` inside the function body at call time (not at module load), so the conditional in the new clause is not met. `vi.stubEnv("AI_PROVIDER", provider)` correctly controls which branch executes. The provider SDK clients (`anthropic.ts`, `gemini.ts`) are module-level singletons but each uses its own API key — both valid in the test environment — and neither key changes between tests. No code change was required. The test comment was updated to document this reasoning explicitly.
+
+---
+
+## Amendment 024
+
+**Date:** 2026-03-10
+**Section:** 8.2 — Integration Tests / Slack posting
+**Type:** Test gap
+**Status:** Applied
+
+**What the spec says:**
+"Input: malformed `slack_thread_ts` — Expected: `INVALID_THREAD_LINK` error returned; no message posted."
+
+**What was built:**
+`slack-posting.test.ts` tested the malformed case by asserting the regex pattern directly, without making any HTTP request to the route. The actual 422 response from `POST /api/workflow/approve` was never exercised.
+
+**Resolution:**
+`tests/integration/approve-route-thread-validation.test.ts` created. Imports `POST` from the route handler directly, constructs `NextRequest` instances with malformed `slack_thread_ts` values, and asserts HTTP 422 with `error: "INVALID_THREAD_LINK"`. Auth and Supabase lookups are mocked via `vi.mock()` (hoisted); no real Slack or Notion credentials are used since the 422 guard fires before any delivery call. Five cases are covered: full Slack URL, bare integer without decimal, non-numeric string, valid `digits.digits` format (must not be 422), and absent `slack_thread_ts` (must not be 422).
+
+---
+
+## Amendment 025
+
+**Date:** 2026-03-10
+**Section:** 8.2 — Integration Tests / Notion writing
+**Type:** Test bug + test gap
+**Status:** Applied
+
+**What the spec says:**
+"Expected: correct number of rows created in test Notion database; field values match input exactly."
+
+**What was built:**
+`notion-writing.test.ts` had two problems:
+1. The readback checked `props["Description"]` with type `rich_text`, but `appendRecordToNotion` writes the description to the `Name` property (type `title`). The `Description` property does not exist in the database schema; this assertion would always throw "Expected Description to be rich_text at index 0."
+2. Only `description` (via wrong property) and `category` were verified on readback. `owner`, `due_date`, `meeting_title`, and `meeting_date` were written but never read back.
+
+**Resolution:**
+`notion-writing.test.ts` updated:
+- Description: now reads `props["Name"]` with `type === "title"`, matching how `appendRecordToNotion` writes it.
+- Owner: reads `props["Owner"]` as `rich_text`; asserts `""` when `expected.owner === null` (Notion returns empty `rich_text: []` for omitted properties).
+- Due Date: reads `props["Due Date"]` as `date`; asserts `date.start` equals the expected value when present, and `date === null` when `expected.due_date === null` (Notion returns `date: null` for omitted date properties).
+- Meeting: reads `props["Meeting"]` as `rich_text`; asserts `meeting_title`.
+- Meeting Date: reads `props["Meeting Date"]` as `date`; asserts `date.start` equals `meeting_date`.
+
+---
+
+## Amendment 026
+
+**Date:** 2026-03-10
+**Section:** 8.2 — Integration Tests / Partial approval failure
+**Type:** Test gap
+**Status:** Applied
+
+**What the spec says:**
+"Expected: Slack post succeeds; destination write fails; response status is 207; `slack_status: "success"`, `destination_status: "failed"`."
+
+**What was built:**
+`partial-failure.test.ts` tested Slack and Notion in isolation at the library level only. The 207 HTTP response and combined `{ slack_status, destination_status }` payload from `POST /api/workflow/approve` were never asserted. A comment in the test incorrectly stated this was covered by "the E2E partial failure scenario" — no such E2E spec exists.
+
+**Resolution:**
+`tests/integration/approve-route-partial-failure.test.ts` created. Uses `vi.stubEnv("NOTION_API_KEY", "invalid") + vi.resetModules() + vi.doMock()` to ensure the Notion client re-initialises with the bad key. Auth, Supabase run-lookup, project-lookup, and run-persistence are mocked; `@/lib/slack/client` is left unmocked so a real Slack post to `TEST_SLACK_CHANNEL_ID` executes. Asserts `response.status === 207`, `slack_status === "success"`, `destination_status === "failed"`, and `destination_error` matching `/NOTION_API_ERROR/`. The misleading comment in `partial-failure.test.ts` was updated to reference the new file.
+
+---
+
+## Amendment 027
+
+**Date:** 2026-03-10
+**Section:** 8.3 — End-to-End Tests
+**Type:** Test gap
+**Status:** Applied
+
+**What the spec implies:**
+E2E tests must reliably locate UI elements. All five E2E specs used `data-testid` as the primary locator strategy, with text-content or attribute-name strings as fallbacks.
+
+**What was built:**
+No `data-testid` attributes were present on the built React components. Every `data-testid` locator in the E2E specs silently fell through to its fallback selector. The tests were effectively running on imprecise fallbacks and would break if button text or input names changed.
+
+**Resolution:**
+`data-testid` attributes added to all targeted elements across three components:
+- `src/app/workflow/confirm/page.tsx`: `meeting-title-input`, `meeting-date-input`, `doc-candidate` (candidate `<tr>`), `manual-doc-input`, `project-select`, `generate-btn`.
+- `src/app/workflow/approve/page.tsx`: `summary-textarea`, `thread-input`, `approve-btn`, `discard-btn`, `slack-status` and `destination-status` (via `testId` prop on `DeliveryBadge`).
+- `src/app/runs/page.tsx`: `run-row` (each run `<tr>`).
+
+All five E2E specs updated to use bare `data-testid` selectors only; all fallback selectors removed.
+
+---
+
+## Amendment 028
+
+**Date:** 2026-03-10
+**Section:** 8.3 — End-to-End Tests / Full workflow — manual selection after ambiguous match
+**Type:** Test bug
+**Status:** Applied
+
+**What the spec says:**
+"The confirm page shows a radio-button table with more than one candidate."
+
+**What was built:**
+`workflow-ambiguous-match.spec.ts` contained `await expect(candidates).toHaveCount(2)` — hardcoded to exactly two candidates. Any fixture that produced three or more candidates would cause this assertion to fail, even though the test's intent was only to verify that multiple candidates are present.
+
+**Resolution:**
+The `toHaveCount(2)` assertion and its associated comments were removed. The immediately following `expect(candidateCount).toBeGreaterThan(1)` is the correct form and is retained as the sole count assertion.
+
+---
+
+## Amendment 029
+
+**Date:** 2026-03-10
+**Section:** 8.2 — Integration Tests / Partial approval failure
+**Type:** Test bug
+**Status:** Applied
+
+**What was built:**
+`partial-failure.test.ts` contained a comment stating the 207 HTTP response was "exercised by the E2E partial failure scenario." No E2E partial failure spec exists, and Section 8.3 does not list partial failure as a required E2E scenario. The comment was factually wrong and would mislead anyone investigating test coverage for the 207 path.
+
+**Resolution:**
+Comment updated to reference `approve-route-partial-failure.test.ts`, which is where the 207 response is now actually tested.
