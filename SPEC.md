@@ -115,7 +115,7 @@ User clicks Trigger
 ### Auth
 
 - Single Google OAuth 2.0 connection via NextAuth.js
-- Scopes required: `calendar.readonly`, `drive.readonly`, `docs.readonly`
+- Scopes required: `https://www.googleapis.com/auth/calendar.readonly`, `https://www.googleapis.com/auth/drive.readonly`, `https://www.googleapis.com/auth/documents.readonly`
 - Slack, Notion, and Google Sheets credentials are stored per-project in Supabase as encrypted environment-level secrets, not per-user OAuth — see Section 10: Open Questions for the Notion and Sheets auth approach
 - No multi-user auth, no roles, no session sharing
 
@@ -1004,6 +1004,11 @@ The app is deployed to Vercel. A Vercel account is required, and the project mus
 *Decision needed:* Confirm whether a personal or organisational Vercel account will be used, and confirm that a GitHub repository will be created for the project.
 
 *Decision:* Confirmed. A personal Vercel account will be used.
+
+---
+
+**8. Workflow state preservation on token expiry
+*Status:* Deferred. When the middleware detects a RefreshTokenError and redirects to sign-in, any in-progress workflow state (confirmed doc, selected project, generated summary) is lost. Section 4.3 requires state preservation "where possible" — this is acknowledged as currently unaddressed. Revisit when building the approval screen (Section 3.6); options include sessionStorage, URL params, or a short-lived server-side store.
 
 ## 11. Appendix
 
