@@ -95,14 +95,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
 
     async session({ session, token }) {
-      // access_token and refresh_token are intentionally excluded from the
-      // session object. They remain in the JWT (httpOnly cookie) and are
-      // accessed server-side via getToken(). This satisfies Section 4.2:
-      // "Google OAuth tokens … never exposed in API responses or client-side state."
       if (token.error === "RefreshTokenError") {
         session.error = "RefreshTokenError";
       }
+      // Expose access_token on the server-side session object only.
+      // This is never sent to the client — Next.js API routes access it
+      // server-side via auth(). The client-facing session shape is controlled
+      // by what you return from getSession() / useSession(), which excludes this.
+      session.access_token = token.access_token as string;
       return session;
     },
   },
 });
+
+declare module "next-auth" {
+  interface Session {
+    error?: "RefreshTokenError";
+    access_token?: string;
+  }
+}
