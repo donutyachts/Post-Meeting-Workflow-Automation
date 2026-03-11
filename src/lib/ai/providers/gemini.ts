@@ -10,7 +10,7 @@ const client = new GoogleGenerativeAI(process.env.GOOGLE_AI_STUDIO_API_KEY!);
  * may import @google/generative-ai directly (Section 4.6).
  */
 export async function generateWithGemini(prompt: string): Promise<string> {
-  const model = client.getGenerativeModel({ model: "gemini-2.0-flash-001" });
+  const model = client.getGenerativeModel({ model: "gemini-2.5-flash" });
   const result = await model.generateContent(prompt);
   return result.response.text();
 }
