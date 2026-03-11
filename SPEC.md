@@ -156,9 +156,11 @@ User clicks Trigger
 
 ### 3.4 Transcript Extraction
 
-- The app fetches the full content of the confirmed Google Doc via the Google Docs API
-- The boundary between the Gemini-generated content and the raw transcript is identified by locating the `# 📖 Transcript` heading in the document; everything above this heading is ignored, everything below it is extracted and passed to the AI
-- The transcript contains timestamped section headers (e.g., `### 00:00:00`) and speaker labels formatted as bold names (e.g., `**Ionela Babas:`**); these are preserved in the extracted text passed to the AI but the AI prompt must instruct the model not to include timestamps or speaker labels in the generated summary output
+- The app fetches the full content of the confirmed Google Doc via the Google Docs API using `includeTabsContent: true`
+- Gemini Notes documents use two tabs: **Notes** (Gemini-generated summary) and **Transcript** (raw transcript); the app targets the Transcript tab exclusively by matching the tab title "Transcript" in `document.tabs`
+- If no tab with the title "Transcript" is found, the app returns a `TRANSCRIPT_NOT_FOUND` error
+- The Transcript tab contains a `HEADING_2` title line formatted as "{Meeting Title} - Transcript"; this line is skipped and all remaining content is extracted and passed to the AI
+- The transcript contains timestamps on their own lines (e.g., `00:00:00`) and speaker turns formatted as `{Speaker Name}: {utterance}`; these are preserved in the extracted text passed to the AI but the AI prompt instructs the model not to include timestamps or speaker labels in the generated summary output
 
 ### 3.5 AI Summary Generation
 
