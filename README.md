@@ -48,7 +48,7 @@ No summary or data is posted without your explicit approval.
 
 ## Setup
 
-See [Environment Setup](#environment-setup) below for full local and production setup instructions.
+See [Environment Setup](SETUP.md) below for full local and production setup instructions.
 
 ## Key Decisions
 
