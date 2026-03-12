@@ -52,7 +52,7 @@ See [Environment Setup](SETUP.md) below for full local and production setup inst
 
 ## Key Decisions
 
-- The AI works exclusively from the raw transcript section of the Gemini Notes Doc (below the `# 📖 Transcript` heading). The Gemini-generated summary is ignored.
+- The AI works exclusively from the raw transcript section of the Gemini Notes Doc. The Gemini-generated summary is ignored.
 - The AI prompt is defined in `lib/ai/generate.ts` and is not configurable via the UI. Prompt changes require a code update and redeployment.
 - Transcripts are never persisted. They exist in memory only for the duration of a workflow run.
 - Slack posting and Notion/Sheets writing are independent operations. Failure of one does not affect the other.
