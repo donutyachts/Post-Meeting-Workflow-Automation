@@ -45,6 +45,28 @@
 
 ---
 
+### Rich Structured Data Records
+**Problem:** Structured data records written to Notion and Google Sheets contain only a description, stripped of the context that makes them actionable. A Problem record, for example, should capture not just what the problem is but why it matters, its impact, and the proposed solution. Without this context, records in Notion and Sheets are reference items rather than useful artifacts.
+
+**Success criteria:**
+- Each structured data record is written with category-specific contextual fields, not just a description
+- For Notion: the page body of each record is populated with structured content following a per-category template
+- For Google Sheets: additional columns are appended per record to capture the same contextual fields
+- The AI infers contextual field values from the transcript in the same call that generates the summary and records — no additional user input required at generation time
+- The user can review and edit contextual fields in the approval UI before posting
+- Records where context cannot be inferred from the transcript have those fields left blank rather than hallucinated
+
+**Spec reference:** Extends Sections 3.5 (AI generation), 3.6 (approval UI), 3.8 (Notion/Sheets writing), 5.3 (StructuredDataRecord), 5.7 (Notion schema), and 5.8 (Sheets schema). Requires updates to the AI prompt in Section 3.5.1.
+
+**Open questions:**
+1. What are the contextual fields for each category? Known so far: Problem (what it is, why it's a problem, impact, solution). Need templates for: Conclusions, Action items, Changes, Decisions, Things to know, Risks.
+2. For Google Sheets: should contextual fields be additional columns appended after the existing schema, or should the schema be redesigned entirely?
+3. For Notion: the existing schema uses row properties only. Populating the page body requires a different Notion API call (`append_block_children`) in addition to the existing `create_page` call — confirm this is acceptable complexity.
+4. Should contextual fields be editable per-record in the approval UI, or is the AI-generated content treated as final unless the user edits the description?
+5. If a contextual field cannot be inferred from the transcript, should the field be omitted entirely or left as a visible blank for the user to fill in manually?
+
+---
+
 ## Later
 
 ### Project Health Sentinel
