@@ -183,33 +183,36 @@ NOTION_API_KEY=                        # from Notion → Settings → Integratio
 
 ## 7. Local Development
 
-1. Clone the repository:
+1. If you have not yet bootstrapped the Next.js app, do this from the parent directory of your cloned repo — not from inside it:
 
 bash
-git clone [https://github.com/donutyachts/Post-Meeting-Workflow-Automation.git](https://github.com/donutyachts/Post-Meeting-Workflow-Automation.git)  
-cd post-meeting-workflow-automation  
+cd ..
+npx create-next-app@latest post-meeting-workflow-automation --typescript --app --no-tailwind --eslint --src-dir --import-alias "@/*"
 
+create-next-app will detect that the directory already exists and ask if you want to proceed. Confirm yes. It will scaffold the Next.js project into the existing directory without deleting files already there (README.md, SETUP.md, etc.).
 
-1. Install dependencies:
+2. Move back into the project directory:
 
 bash
-npm install
+cd post-meeting-workflow-automation
 
+3. Install additional dependencies:
 
-1. Copy the environment variable template:
+npm install @supabase/supabase-js next-auth@beta googleapis @anthropic-ai/sdk @google/generative-ai @slack/web-api @notionhq/client
+
+4. Copy the environment variable template:
 
 bash
 cp .env.example .env.local
 
+5. Fill in .env.local with the values gathered in steps 1–5.
 
-1. Fill in .env.local with the values gathered in steps 1–5
-2. Run the development server:
+6. Run the development server:
 
 bash
 npm run dev
 
-
-1. Open [http://localhost:3000](http://localhost:3000) and sign in with your Google account
+7. Open http://localhost:3000 and sign in with your Google account.
 
 ---
 
