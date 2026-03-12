@@ -1,5 +1,6 @@
 # Post-Meeting Workflow Automation — Specification
 
+*Specification authored with [Claude](https://claude.ai) (Anthropic)*
 
 ---
 
@@ -295,6 +296,7 @@ Respond with only this JSON structure and nothing else:
 
 - The app logs every workflow run to Supabase with the following fields: meeting title, meeting date, project assigned, AI provider used, approval status (approved / discarded), Slack delivery status, destination delivery status, timestamp
 - A run history screen displays past runs in reverse chronological order
+- When `project_id` is null (the associated project was deleted after the run was logged), the project column must display "Deleted project" rather than attempting a project name lookup
 - No editing of past runs is supported
 
 ---
@@ -351,8 +353,10 @@ type Project = {
   id: string;                          // uuid, primary key
   name: string;                        // display name, e.g. "Brand Unification"
   slack_channel_id: string;            // Slack channel ID, e.g. "C08J9PLE20J"
+  slack_channel_name: string;          // human-readable channel name, stored without # prefix, e.g. "brand-unification"
   destination_type: "notion" | "sheets";
   destination_id: string;              // Notion database ID or Google Sheets spreadsheet ID
+  destination_name: string;            // human-readable name for the Notion DB or Google Sheet, e.g. "Brand Unification DB"
   created_at: string;                  // ISO 8601 timestamp
   updated_at: string;                  // ISO 8601 timestamp
 }
@@ -366,10 +370,10 @@ Stored in Supabase. One record per completed or discarded workflow run.
 type WorkflowRun = {
   id: string;                          // uuid, primary key
   meeting_title: string;               // Google Calendar event title
-  meeting_date: string;                // ISO 8601 date, e.g. "2026-03-04"
+  meeting_date: string;                // ISO 8601 date, e.g. "2026-03-04"; stored as SQL DATE column
   meeting_duration_minutes: number;    // derived from Calendar event start/end
   gemini_doc_id: string;               // Google Drive file ID of the confirmed Gemini Notes Doc
-  project_id: string;                  // foreign key → Project.id
+  project_id: string | null;           // foreign key → Project.id; NULL when the associated project has been deleted (ON DELETE SET NULL)
   ai_provider: "anthropic" | "gemini"; // active provider at time of run
   approval_status: "approved" | "discarded";
   slack_status: "success" | "failed" | "skipped";
@@ -427,7 +431,7 @@ type RecordCategory =
   | "Problems";
 ```
 
-5.6 GenerateResult
+### 5.6 GenerateResult
 
 The return type of `generateSummary()` in `lib/ai/generate.ts`.
 
@@ -463,7 +467,7 @@ Category | Description | Owner | Due Date | Meeting | Meeting Date
 
 ## 6. API Contracts
 
-All API routes are Next.js server-side route handlers. All requests and responses are JSON. All routes require an authenticated session via NextAuth.js — unauthenticated requests return `401`.
+All API routes are Next.js server-side route handlers. All requests and responses are JSON. All API routes require an authenticated session via NextAuth.js — unauthenticated requests return `401`. Page routes redirect unauthenticated users to sign-in (`302`).
 
 ---
 
@@ -494,6 +498,8 @@ Fetches the most recent Google Calendar event where the authenticated user is th
 }
 ```
 
+`doc_date` is populated from the Drive file's `createdTime` field. It is used as a fast initial filter in tiebreaker logic and does not require fetching document content.
+
 **Response 200 — no matches**
 
 ```json
@@ -514,6 +520,54 @@ Fetches the most recent Google Calendar event where the authenticated user is th
 
 // 502 — Google Drive API call failed
 { "error": "DRIVE_API_ERROR", "message": "..." }
+```
+
+---
+
+### POST /api/workflow/match
+
+Applies tiebreaker logic to a list of Drive candidates and returns either a single resolved match or the remaining ambiguous candidates for manual selection.
+
+**Request**
+
+```json
+{
+  "event": {
+    "date": "2026-03-04",
+    "duration_minutes": 40
+  },
+  "candidates": [
+    {
+      "doc_id": "...",
+      "doc_title": "...",
+      "doc_date": "2026-03-04",
+      "confidence": "partial"
+    }
+  ]
+}
+```
+
+**Response 200**
+
+```json
+{
+  "resolved": {
+    "doc_id": "...",
+    "doc_title": "...",
+    "doc_date": "2026-03-04",
+    "confidence": "partial"
+  },
+  "ambiguous": []
+}
+```
+
+If tiebreaking does not resolve to a single match, `resolved` is `null` and `ambiguous` contains all remaining candidates.
+
+**Error states**
+
+```json
+// 400 — missing or invalid fields
+{ "error": "VALIDATION_ERROR", "message": "..." }
 ```
 
 ---
@@ -569,7 +623,7 @@ Extracts the raw transcript from the confirmed Google Doc and sends it to the AI
 
 ```json
 // 422 — transcript boundary not found in Doc
-{ "error": "TRANSCRIPT_NOT_FOUND", "message": "Could not locate '📖 Transcript' heading in document." }
+{ "error": "TRANSCRIPT_NOT_FOUND", "message": "Could not locate 'Transcript' tab in document." }
 
 // 502 — Google Docs API call failed
 { "error": "DOCS_API_ERROR", "message": "..." }
@@ -582,7 +636,7 @@ Extracts the raw transcript from the confirmed Google Doc and sends it to the AI
 
 ### POST /api/workflow/approve
 
-Posts the approved summary to Slack and writes structured data records to Notion or Google Sheets.
+Posts the approved summary to Slack and writes structured data records to Notion or Google Sheets. Both operations are always attempted independently — failure of one does not prevent the other.
 
 **Request**
 
@@ -591,11 +645,16 @@ Posts the approved summary to Slack and writes structured data records to Notion
   "run_id": "uuid",
   "summary": "...",
   "records": [ ... ],
-  "slack_thread_ts": "1772639685.263439"
+  "slack_thread_ts": "1772639685.263439",
+  "retry_only": "destination"
 }
 ```
 
 `slack_thread_ts` is optional. If omitted, the summary is posted as a top-level message.
+
+`retry_only` is optional. When set to `"slack"`, only the Slack post is attempted and the destination status in Supabase is not modified. When set to `"destination"`, only the destination write is attempted and the Slack status in Supabase is not modified. When omitted, both operations are attempted.
+
+`slack_thread_ts` must match the format `\d+\.\d+` (digits, period, digits). A value that does not match this format returns 422 immediately, before either operation runs.
 
 **Response 200**
 
@@ -618,18 +677,48 @@ Posts the approved summary to Slack and writes structured data records to Notion
   "destination_error": "NOTION_API_ERROR"
 }
 ```
-Both operations always run independently. Failure of one does not prevent or roll back the other. The 207 response always includes explicit status and error fields for both operations so the caller knows exactly which operation failed without inspecting logs.
 
-Possible values for slack_error: `SLACK_API_ERROR`, `null`
+Possible values for `slack_error`: `"SLACK_API_ERROR"`, `null`
 
-Possible values for destination_error: `NOTION_API_ERROR`, `SHEETS_API_ERROR`, `null`
+Possible values for `destination_error`: `"NOTION_API_ERROR"`, `"SHEETS_API_ERROR"`, `null`
 
 **Response 422 — thread link invalid**
 
 ```json
 { "error": "INVALID_THREAD_LINK", "message": "Could not resolve thread_ts from provided Slack link." }
 ```
-Returned before either operation runs if `slack_thread_ts` fails format validation. Nothing is posted or written when this error is returned.
+
+Returned before either operation runs if `slack_thread_ts` fails format validation.
+
+---
+
+### POST /api/workflow/discard
+
+Marks a workflow run as discarded without posting to Slack or writing to any destination.
+
+**Request**
+
+```json
+{
+  "run_id": "uuid"
+}
+```
+
+**Response 200**
+
+```json
+{ "discarded": true }
+```
+
+**Error states**
+
+```json
+// 400 — run_id missing
+{ "error": "VALIDATION_ERROR", "message": "..." }
+
+// 404 — run not found
+{ "error": "NOT_FOUND", "message": "Run not found." }
+```
 
 ---
 
@@ -646,8 +735,10 @@ Returns all configured projects.
       "id": "uuid",
       "name": "Brand Unification",
       "slack_channel_id": "C08J9PLE20J",
+      "slack_channel_name": "brand-unification",
       "destination_type": "notion",
       "destination_id": "notion-database-id",
+      "destination_name": "Brand Unification DB",
       "created_at": "2026-01-01T00:00:00Z",
       "updated_at": "2026-01-01T00:00:00Z"
     }
@@ -667,10 +758,14 @@ Creates a new project configuration.
 {
   "name": "Brand Unification",
   "slack_channel_id": "C08J9PLE20J",
+  "slack_channel_name": "brand-unification",
   "destination_type": "notion",
-  "destination_id": "notion-database-id"
+  "destination_id": "notion-database-id",
+  "destination_name": "Brand Unification DB"
 }
 ```
+
+All six fields are required. `slack_channel_name` is stored without a `#` prefix and displayed on the approval screen as `#brand-unification`. `destination_name` is the human-readable name for the Notion database or Google Sheet, displayed on the approval screen as-is.
 
 **Response 201**
 
@@ -689,9 +784,9 @@ Creates a new project configuration.
 
 ### PATCH /api/projects/[id]
 
-Updates an existing project configuration.
+Updates an existing project configuration. An empty request body (no recognised fields provided) is invalid and must return 400.
 
-**Request:** any subset of `name`, `slack_channel_id`, `destination_type`, `destination_id`
+**Request:** any subset of `name`, `slack_channel_id`, `slack_channel_name`, `destination_type`, `destination_id`, `destination_name`
 
 **Response 200**
 
@@ -702,6 +797,9 @@ Updates an existing project configuration.
 **Error states**
 
 ```json
+// 400 — empty body or invalid fields
+{ "error": "VALIDATION_ERROR", "message": "..." }
+
 // 404 — project not found
 { "error": "NOT_FOUND", "message": "Project not found." }
 ```
@@ -710,7 +808,7 @@ Updates an existing project configuration.
 
 ### DELETE /api/projects/[id]
 
-Deletes a project configuration. Does not delete associated workflow run history.
+Deletes a project configuration. Does not delete associated workflow run history. Sets `project_id` to `null` on any associated `workflow_runs` rows via `ON DELETE SET NULL`.
 
 **Response 204:** no body
 
@@ -725,7 +823,7 @@ Deletes a project configuration. Does not delete associated workflow run history
 
 ### GET /api/runs
 
-Returns workflow run history in reverse chronological order.
+Returns workflow run history in reverse chronological order. Returns all columns from the `workflow_runs` table including `meeting_duration_minutes`, `gemini_doc_id`, and `slack_thread_ts`.
 
 **Response 200**
 
@@ -736,11 +834,14 @@ Returns workflow run history in reverse chronological order.
       "id": "uuid",
       "meeting_title": "...",
       "meeting_date": "2026-03-04",
-      "project_id": "uuid",
+      "meeting_duration_minutes": 40,
+      "gemini_doc_id": "...",
+      "project_id": "uuid or null",
       "ai_provider": "anthropic",
       "approval_status": "approved",
       "slack_status": "success",
       "destination_status": "success",
+      "slack_thread_ts": null,
       "created_at": "2026-03-04T15:30:00Z"
     }
   ]
@@ -799,8 +900,8 @@ GOOGLE_CLIENT_SECRET=
 
 # AI Provider
 AI_PROVIDER=gemini                  # or "anthropic"
-#ANTHROPIC_API_KEY=                     # required if AI_PROVIDER=anthropic
-GOOGLE_AI_STUDIO_API_KEY=              # required if AI_PROVIDER=gemini
+#ANTHROPIC_API_KEY=                 # required if AI_PROVIDER=anthropic
+GOOGLE_AI_STUDIO_API_KEY=           # required if AI_PROVIDER=gemini
 
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=
@@ -830,7 +931,7 @@ Integration and end-to-end tests only. No unit tests unless explicitly requested
 
 - A dedicated Supabase project for testing — separate from production; schema must mirror production exactly
 - A dedicated Slack channel for test posts — never post to a live project channel during tests
-- A dedicated Notion database and Google Sheet for test writes — pre-configured with the correct schema per Sections 5.4 and 5.5
+- A dedicated Notion database and Google Sheet for test writes — pre-configured with the correct schema per Sections 5.7 and 5.8
 - A real Google account with past Calendar events and past Gemini Notes Docs in Drive used as test fixtures — past meetings where the Doc exists and the title matches cleanly are preferred
 - All environment variables must have test-specific equivalents (e.g., `TEST_SLACK_CHANNEL_ID`, `TEST_NOTION_DATABASE_ID`)
 - AI provider calls in integration tests must use real API keys against real providers — mocking the AI response is not acceptable as it bypasses the prompt validation which is a core correctness concern
@@ -848,9 +949,9 @@ Integration and end-to-end tests only. No unit tests unless explicitly requested
 
 **Google Docs transcript extraction**
 
-- Input: a real Gemini Notes Doc containing both a Gemini summary section and a `# 📖 Transcript` heading
-- Expected: only content below the `# 📖 Transcript` heading is extracted; Gemini summary content is absent from the extracted text
-- Input: a Doc with no `# 📖 Transcript` heading
+- Input: a real Gemini Notes Doc containing both a Notes tab and a Transcript tab
+- Expected: only content from the Transcript tab is extracted; Notes tab content is absent from the extracted text
+- Input: a Doc with no Transcript tab
 - Expected: `TRANSCRIPT_NOT_FOUND` error returned
 
 **AI provider — summary generation**
@@ -860,35 +961,37 @@ Integration and end-to-end tests only. No unit tests unless explicitly requested
 - Expected: all records have a `category` value from the predefined taxonomy only
 - Expected: `summary` string begins with `:information_desk_person: Brief notes from today's`
 - Run this test against both providers independently to validate provider parity
-- If `generate.ts` initialises the provider client at module load time, the integration test must call `vi.resetModules()` and dynamically import `generate.ts` after stubbing `AI_PROVIDER`, matching the pattern used in the Slack and Notion client tests.
+- If `generate.ts` initialises the provider client at module load time, the integration test must call `vi.resetModules()` and dynamically import `generate.ts` after stubbing `AI_PROVIDER`, matching the pattern used in the Slack and Notion client tests
 
 **Slack posting — malformed thread_ts**
 
-- Test must be implemented as a route-level integration test that calls POST /api/workflow/approve directly via a NextRequest
-- Input: approved summary and records; slack_thread_ts set to a malformed value (e.g., a full Slack URL, an integer without a decimal, or a non-numeric string)
-- Expected: HTTP response status is 422; response body contains error: "INVALID_THREAD_LINK"; no Slack API call is made
-- Also cover the inverse: valid slack_thread_ts format (digits.digits) and absent slack_thread_ts must not trigger a 422
+- Test must be implemented as a route-level integration test that calls `POST /api/workflow/approve` directly via a `NextRequest`
+- Input: approved summary and records; `slack_thread_ts` set to a malformed value (e.g., a full Slack URL, an integer without a decimal, or a non-numeric string)
+- Expected: HTTP response status is 422; response body contains `error: "INVALID_THREAD_LINK"`; no Slack API call is made
+- Also cover the inverse: valid `slack_thread_ts` format (`digits.digits`) and absent `slack_thread_ts` must not trigger a 422
 - Validating the thread link regex constant in isolation without asserting the route's HTTP response does not satisfy this test case
 
 **Notion writing**
 
 - Input: a set of structured data records with all field combinations (owner present, owner null, due date present, due date null)
-- Expected: correct number of rows created in test Notion database; field values match input exactly
+- Expected: correct number of rows created in test Notion database; field values match input exactly; verified by reading back the created rows and asserting each property by type (`title`, `rich_text`, `date`, `select`) against the input values
 
 **Google Sheets writing**
 
 - Input: same structured data records as Notion test above
-- Expected: correct number of rows appended to test Sheet; column order matches schema in Section 5.5
+- Expected: correct number of rows appended to test Sheet; column order matches schema in Section 5.8
 
 **Partial approval failure**
 
-- Test must be implemented as a route-level integration test that calls POST /api/workflow/approve directly via a NextRequest
+- Test must be implemented as a route-level integration test that calls `POST /api/workflow/approve` directly via a `NextRequest`
 - Input: valid summary and records; Notion API key intentionally invalid; real Slack bot token present
-- Expected: HTTP response status is 207; response body contains slack_status: "success", destination_status: "failed", and destination_error matching NOTION_API_ERROR
+- Expected: HTTP response status is 207; response body contains `slack_status: "success"`, `destination_status: "failed"`, and `destination_error` matching `NOTION_API_ERROR`
 - The Slack post must execute against the real test channel; the Notion write must be the live failure path, not a mock
 - Testing the Notion client function in isolation without asserting the route's HTTP response does not satisfy this test case
 
 ### 8.3 End-to-End Tests
+
+All targeted UI elements must have `data-testid` attributes. E2E specs must use `data-testid` selectors as the primary locator strategy.
 
 **Full workflow — happy path (Notion)**
 
@@ -924,8 +1027,9 @@ Integration and end-to-end tests only. No unit tests unless explicitly requested
 **Full workflow — manual selection after ambiguous match**
 
 1. Trigger workflow where multiple Drive Docs match the Calendar event title and tiebreakers do not resolve to a single match
-2. Select the correct Doc from the surfaced candidates
-3. Complete workflow through to approval and post
+2. Confirm the page shows more than one candidate (assert `candidateCount > 1`)
+3. Select the correct Doc from the surfaced candidates
+4. Complete workflow through to approval and post
 
 - Expected: workflow completes successfully using the selected Doc
 
@@ -933,7 +1037,7 @@ Integration and end-to-end tests only. No unit tests unless explicitly requested
 
 - **AI output consistency** — the AI summary and records are non-deterministic; tests can validate structure and taxonomy compliance but cannot assert exact output content; this is expected and acceptable
 - **Google OAuth token expiry handling** — cannot be reliably triggered in a test environment; this path must be manually verified during staging
-- **Gemini Notes Doc structure changes** — if Google changes the format of Gemini Notes documents (e.g., renames the `# 📖 Transcript` heading), the transcript extraction will silently fail or return incorrect content; the `TRANSCRIPT_NOT_FOUND` error test in 8.2 is the only safety net for this
+- **Gemini Notes Doc structure changes** — if Google changes the format of Gemini Notes documents (e.g., renames or removes the Transcript tab), transcript extraction will silently fail or return incorrect content; the `TRANSCRIPT_NOT_FOUND` error test in 8.2 is the only safety net for this
 
 ---
 
@@ -985,85 +1089,57 @@ The AI prompt that drives summary generation and structured data extraction is d
 
 ## 10. Open Questions
 
-The following must be resolved before or during build. None of these are blockers to starting development, but each will require a decision before the affected feature can be completed.
+All open questions have been resolved. Decisions are recorded below for reference.
 
 ---
 
 **1. Slack Bot Token scope and installation**
 
-The spec uses a `SLACK_BOT_TOKEN` stored as an environment variable. This requires a Slack app to be created and installed into the HostPapa Slack workspace with the following bot token scopes: `chat:write`, `chat:write.public` (to post to channels the bot hasn't joined). If the workspace has restrictions on third-party app installations, this will require approval from a Slack workspace admin.
-
-*Decision needed:* Confirm that a Slack app can be created and installed into the workspace, and that `chat:write` and `chat:write.public` scopes are permissible.
-
-*Decision:* Confirmed. A Slack app will be created and installed with the required scopes on the HostPapa Slack workspace.
+*Decision:* Confirmed. A Slack app will be created and installed with the required scopes (`chat:write`, `chat:write.public`) on the HostPapa Slack workspace.
 
 ---
 
 **2. Notion API key and integration permissions**
 
-The Notion API requires an internal integration to be created in the Notion workspace and explicitly connected to each database the app will write to. The `NOTION_API_KEY` is the integration's secret token. Each Notion database used as a project destination must have the integration added to it manually via the Notion UI.
-
-*Decision needed:* Confirm that a Notion internal integration can be created in the workspace and that you have permission to connect it to the relevant databases.
-
-*Decision:* Confirmed. A Notion internal integration can be created in the Notion workspace of my personal Notion account.
+*Decision:* Confirmed. A Notion internal integration will be created in the personal Notion account workspace.
 
 ---
 
 **3. Google OAuth consent screen verification**
 
-The app uses Google OAuth to access Calendar, Drive, Docs, and Sheets. Because the app requests access to sensitive scopes (Drive, Docs), Google may require the OAuth consent screen to be verified before external users can authenticate. Since this is a single-user app, it can be kept in testing mode indefinitely — which bypasses verification but limits OAuth access to accounts explicitly added as test users in the Google Cloud Console.
-
-*Decision needed:* Confirm the app will remain in testing mode with your Google account as the sole test user. This is the recommended approach for a single-user tool.
-
-*Decision:* Confirmed. The app will remain in testing mode with my personal Google account as the sole test user.
+*Decision:* Confirmed. The app will remain in testing mode with the personal Google account as the sole test user.
 
 ---
 
 **4. Google Cloud Project ownership**
 
-The Google APIs (Calendar, Drive, Docs, Sheets) require a Google Cloud project with the relevant APIs enabled and OAuth credentials configured. This Cloud project must be created and maintained by you or someone with access to the Google Workspace.
-
-*Decision needed:* Confirm who will create and own the Google Cloud project. If HostPapa has a managed Google Workspace, IT or admin involvement may be required to enable certain APIs or authorize the OAuth app.
-
-*Decision:*  I will create the Google Cloud project using my peronal Google account and thus own the Google Cloud project.
+*Decision:* The Google Cloud project will be created and owned under the personal Google account.
 
 ---
 
 **5. Gemini Notes Doc structure stability**
 
-The transcript extraction logic depends on the `# 📖 Transcript` heading being present and consistently formatted in all Gemini Notes Docs. This heading is generated by Google and is not under your control. If Google changes the format of Gemini Notes documents, extraction will break.
-
-*Decision needed:* Acknowledge this as an accepted risk and agree to monitor for breakage. No mitigation is possible beyond the `TRANSCRIPT_NOT_FOUND` error handling already specced.
-
-*Decision:* Acknowledge that if Google Changes the format of Gemini Notes documents, then the extract will stop working.
+*Decision:* Accepted risk. If Google changes the format of Gemini Notes documents, transcript extraction will break. The `TRANSCRIPT_NOT_FOUND` error is the only safety net. No further mitigation is planned.
 
 ---
 
 **6. AI provider for initial build**
 
-The spec supports both Anthropic Claude and Google Gemini via an environment variable. A decision on which provider to use first is needed before build begins so the correct API key is provisioned.
-
-*Decision needed:* Select the initial AI provider — `anthropic` or `gemini` — for the first deployment.
-
-*Decision:* The initial AI providers is `gemini` for the first deployment.
+*Decision:* Gemini via Google AI Studio free tier. `AI_PROVIDER=gemini` for the first deployment.
 
 ---
 
 **7. Vercel deployment account**
 
-The app is deployed to Vercel. A Vercel account is required, and the project must be linked to a GitHub repository.
-
-*Decision needed:* Confirm whether a personal or organisational Vercel account will be used, and confirm that a GitHub repository will be created for the project.
-
-*Decision:* Confirmed. A personal Vercel account will be used.
+*Decision:* Personal Vercel account. Project will be linked to a GitHub repository.
 
 ---
 
 **8. Workflow state preservation on token expiry**
 
-When the middleware detects a RefreshTokenError and redirects to sign-in, any in-progress workflow state (confirmed doc, selected project, generated summary) is lost. Section 4.3 requires state preservation "where possible" — this is acknowledged as currently unaddressed. Revisit when building the approval screen (Section 3.6); options include sessionStorage, URL params, or a short-lived server-side store.
+*Decision:* Deferred. Silent token refresh in the `jwt` callback handles expiry in most cases without a redirect. When refresh fails and a sign-in redirect is required, in-progress workflow state is lost. State preservation options (sessionStorage, URL params, short-lived server-side store) will be evaluated when the approval screen is built.
 
-*Status:* Deferred. 
+---
 
 ## 11. Appendix
 
@@ -1112,8 +1188,10 @@ post-meeting-workflow-automation/
     │       │   │   └── route.ts        # POST /api/workflow/match
     │       │   ├── generate/
     │       │   │   └── route.ts        # POST /api/workflow/generate
-    │       │   └── approve/
-    │       │       └── route.ts        # POST /api/workflow/approve
+    │       │   ├── approve/
+    │       │   │   └── route.ts        # POST /api/workflow/approve
+    │       │   └── discard/
+    │       │       └── route.ts        # POST /api/workflow/discard
     │       ├── projects/
     │       │   ├── route.ts            # GET, POST /api/projects
     │       │   └── [id]/
