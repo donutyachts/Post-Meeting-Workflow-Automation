@@ -7,7 +7,7 @@
 ## 0. POC Scope and Infrastructure Note
 This specification is being built and validated as a proof of concept on personal accounts. The following infrastructure decisions are POC-specific and are not intended as permanent:
 
-- Google Cloud Project: personal Google account; not a HostPapa Google Workspace account
+- Google Cloud Project: personal Google account; not a company Google Workspace account
 - Google Calendar and Drive: personal Google account used as test fixtures; a real Gemini Notes Doc copied from a work meeting is used as the transcript source
 - Notion: personal Notion account
 - AI provider: Google Gemini via Google AI Studio free tier
@@ -1095,7 +1095,7 @@ All open questions have been resolved. Decisions are recorded below for referenc
 
 **1. Slack Bot Token scope and installation**
 
-*Decision:* Confirmed. A Slack app will be created and installed with the required scopes (`chat:write`, `chat:write.public`) on the HostPapa Slack workspace.
+*Decision:* Confirmed. A Slack app will be created and installed with the required scopes (`chat:write`, `chat:write.public`) on the company Slack workspace.
 
 ---
 
