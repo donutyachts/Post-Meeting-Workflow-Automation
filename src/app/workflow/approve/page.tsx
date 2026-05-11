@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   confirmState,
@@ -52,6 +52,12 @@ export default function ApprovePage() {
 
   // Inline record edit state
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+
+  const summaryRef = useRef<HTMLTextAreaElement>(null);
+
+  useLayoutEffect(() => {
+    if (summaryRef.current) autoResizeTextarea(summaryRef.current);
+  }, [summary]);
 
   useEffect(() => {
     const gen = generateState.load();
@@ -384,7 +390,7 @@ export default function ApprovePage() {
   const isSubmitting = pageState === "submitting";
 
   return (
-    <div className="page">
+    <div className="page" style={{ maxWidth: 1280 }}>
       <div className="flex items-center justify-between mb-24">
         <h1 className="page-title" style={{ marginBottom: 0 }}>
           Review &amp; approve
@@ -407,26 +413,51 @@ export default function ApprovePage() {
         className="approve-cols mb-24"
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 1fr",
+          gridTemplateColumns: "1fr 2fr",
           gap: 24,
           alignItems: "start",
         }}
       >
-        {/* Left column — summary editor */}
+        {/* Left column — summary editor + live preview */}
         <section style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
           <h2 style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>Summary</h2>
           <textarea
+            ref={summaryRef}
             data-testid="summary-textarea"
             className="form-textarea"
             style={{
-              flex: 1,
-              minHeight: 320,
               fontFamily: "var(--font-geist-mono), monospace",
+              overflow: "hidden",
+              resize: "none",
+              minHeight: 120,
             }}
             value={summary}
-            onChange={(e) => setSummary(e.target.value)}
+            onChange={(e) => {
+              setSummary(e.target.value);
+              autoResizeTextarea(e.target);
+            }}
             disabled={isSubmitting}
           />
+          <div style={{ marginTop: 16 }}>
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 500,
+                color: "var(--muted)",
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                marginBottom: 8,
+              }}
+            >
+              Preview
+            </div>
+            <div
+              className="card card-muted"
+              style={{ fontSize: 14, lineHeight: 1.7, padding: "12px 14px", minHeight: 80 }}
+            >
+              {renderSlackPreview(summary)}
+            </div>
+          </div>
         </section>
 
         {/* Right column — structured records */}
@@ -447,11 +478,18 @@ export default function ApprovePage() {
           ) : (
             <div className="card" style={{ padding: 0 }}>
               <div className="table-wrap">
-                <table>
+                <table style={{ tableLayout: "fixed" }}>
+                  <colgroup>
+                    <col style={{ width: 120 }} />
+                    <col />
+                    <col style={{ width: 90 }} />
+                    <col style={{ width: 96 }} />
+                    <col style={{ width: 120 }} />
+                  </colgroup>
                   <thead>
                     <tr>
                       <th>Category</th>
-                      <th>Description</th>
+                      <th style={{ minWidth: 320 }}>Description</th>
                       <th>Owner</th>
                       <th>Due date</th>
                       <th />
@@ -472,8 +510,18 @@ export default function ApprovePage() {
                             <span className="badge badge-muted">{rec.category}</span>
                           </td>
                           <td>{rec.description}</td>
-                          <td className="text-muted">{rec.owner ?? "—"}</td>
-                          <td className="text-muted">{rec.due_date ?? "—"}</td>
+                          <td
+                            className="text-muted"
+                            style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                          >
+                            {rec.owner ?? "—"}
+                          </td>
+                          <td
+                            className="text-muted"
+                            style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                          >
+                            {rec.due_date ?? "—"}
+                          </td>
                           <td style={{ whiteSpace: "nowrap" }}>
                             <button
                               className="btn btn-ghost"
@@ -553,6 +601,70 @@ export default function ApprovePage() {
       </div>
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Textarea auto-resize
+// ---------------------------------------------------------------------------
+
+function autoResizeTextarea(el: HTMLTextAreaElement) {
+  el.style.height = "auto";
+  el.style.height = el.scrollHeight + "px";
+}
+
+// ---------------------------------------------------------------------------
+// Slack preview renderer
+// ---------------------------------------------------------------------------
+
+function renderInline(text: string): React.ReactNode {
+  const parts = text.split(/(\*[^*\n]+\*)/);
+  if (parts.length === 1) return text;
+  return parts.map((p, i) =>
+    p.startsWith("*") && p.endsWith("*") && p.length > 2
+      ? <strong key={i}>{p.slice(1, -1)}</strong>
+      : <span key={i}>{p}</span>
+  );
+}
+
+function renderSlackPreview(text: string): React.ReactNode {
+  if (!text.trim()) {
+    return (
+      <span style={{ color: "var(--muted)", fontStyle: "italic" }}>
+        Nothing to preview yet.
+      </span>
+    );
+  }
+
+  const lines = text.split("\n");
+  const result: React.ReactNode[] = [];
+  const bullets: string[] = [];
+  let key = 0;
+
+  const flushBullets = () => {
+    if (!bullets.length) return;
+    result.push(
+      <ul key={key++} style={{ paddingLeft: 20, margin: "2px 0 6px" }}>
+        {bullets.map((b, i) => <li key={i}>{renderInline(b)}</li>)}
+      </ul>
+    );
+    bullets.length = 0;
+  };
+
+  for (const line of lines) {
+    if (line.startsWith("• ") || line.startsWith("- ")) {
+      bullets.push(line.slice(2));
+    } else {
+      flushBullets();
+      if (!line.trim()) {
+        result.push(<div key={key++} style={{ height: "0.5em" }} />);
+      } else {
+        result.push(<div key={key++}>{renderInline(line)}</div>);
+      }
+    }
+  }
+  flushBullets();
+
+  return <>{result}</>;
 }
 
 // ---------------------------------------------------------------------------
