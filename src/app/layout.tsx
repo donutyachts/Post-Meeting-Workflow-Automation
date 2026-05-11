@@ -28,6 +28,7 @@ export default function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable} app-shell`}>
         <nav className="app-nav">
           <span className="app-nav-brand">Post-Meeting Workflow</span>
+          <Link href="/action-items" className="app-nav-link">Action items</Link>
           <Link href="/runs" className="app-nav-link">Run History</Link>
           <Link href="/projects" className="app-nav-link">Projects</Link>
         </nav>
