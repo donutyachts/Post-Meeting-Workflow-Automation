@@ -117,7 +117,7 @@ export default function RunsPage() {
       ) : (
         <div className="card" style={{ padding: 0 }}>
           <div className="table-wrap">
-            <table>
+            <table className="runs-table">
               <thead>
                 <tr>
                   <th>Meeting</th>
@@ -166,7 +166,7 @@ export default function RunsPage() {
                     <td>
                       <DeliveryBadge status={run.destination_status} />
                     </td>
-                    <td className="text-muted" style={{ whiteSpace: "nowrap" }}>
+                    <td className="text-muted">
                       {formatDateTime(run.created_at)}
                     </td>
                   </tr>

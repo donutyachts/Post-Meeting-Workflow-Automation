@@ -399,6 +399,18 @@ tbody tr:nth-child(even) {
 .badge-cat-action-items   { background: #FFE600; }
 .badge-cat-things-to-know { background: #FFFDF4; }
 
+/* Run history table — tighter sizing to fit 8 columns */
+.runs-table th,
+.runs-table td {
+  font-size: 16px;
+  padding: 8px 12px;
+}
+
+.runs-table .badge {
+  font-size: 14px;
+  padding: 1px 8px;
+}
+
 /* ---------------------------------------------------------------------------
    Alerts / inline messages
 --------------------------------------------------------------------------- */
