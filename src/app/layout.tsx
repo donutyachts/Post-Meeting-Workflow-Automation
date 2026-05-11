@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import Link from "next/link";
+import { Geist, Geist_Mono, Caveat, Patrick_Hand } from "next/font/google";
+import NavLinks from "@/components/NavLinks";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -11,6 +11,18 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+const caveat = Caveat({
+  variable: "--font-caveat",
+  subsets: ["latin"],
+  weight: ["700"],
+});
+
+const patrickHand = Patrick_Hand({
+  variable: "--font-patrick",
+  subsets: ["latin"],
+  weight: ["400"],
 });
 
 export const metadata: Metadata = {
@@ -25,12 +37,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} app-shell`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} ${caveat.variable} ${patrickHand.variable} app-shell`}>
         <nav className="app-nav">
           <span className="app-nav-brand">Post-Meeting Workflow</span>
-          <Link href="/action-items" className="app-nav-link">Action items</Link>
-          <Link href="/runs" className="app-nav-link">Run History</Link>
-          <Link href="/projects" className="app-nav-link">Projects</Link>
+          <NavLinks />
         </nav>
         <main>{children}</main>
       </body>

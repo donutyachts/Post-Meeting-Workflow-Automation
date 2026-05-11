@@ -419,8 +419,8 @@ export default function ApprovePage() {
         }}
       >
         {/* Left column — summary editor + live preview */}
-        <section style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-          <h2 style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>Summary</h2>
+        <section className="card" style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+          <h2 className="section-heading" style={{ marginBottom: 10 }}>Summary</h2>
           <textarea
             ref={summaryRef}
             data-testid="summary-textarea"
@@ -430,6 +430,8 @@ export default function ApprovePage() {
               overflow: "hidden",
               resize: "none",
               minHeight: 120,
+              background: "#FFF8E1",
+              borderRadius: 6,
             }}
             value={summary}
             onChange={(e) => {
@@ -438,7 +440,7 @@ export default function ApprovePage() {
             }}
             disabled={isSubmitting}
           />
-          <div style={{ marginTop: 16 }}>
+          <div style={{ marginTop: 16, borderTop: "1.5px dashed #1a1a1a", paddingTop: 16 }}>
             <div
               style={{
                 fontSize: 12,
@@ -461,9 +463,9 @@ export default function ApprovePage() {
         </section>
 
         {/* Right column — structured records */}
-        <section style={{ minWidth: 0 }}>
-          <div className="flex items-center justify-between mb-12">
-            <h2 style={{ fontSize: 15, fontWeight: 600 }}>Structured records</h2>
+        <section className="card" style={{ minWidth: 0, padding: 0, overflow: "hidden" }}>
+          <div className="flex items-center justify-between" style={{ padding: "16px 20px" }}>
+            <h2 className="section-heading">Structured records</h2>
             <button
               className="btn btn-secondary text-sm"
               onClick={addRecord}
@@ -474,10 +476,9 @@ export default function ApprovePage() {
           </div>
 
           {records.length === 0 ? (
-            <p className="text-muted text-sm">No records. Add one above.</p>
+            <p className="text-muted text-sm" style={{ padding: "0 20px 16px" }}>No records. Add one above.</p>
           ) : (
-            <div className="card" style={{ padding: 0 }}>
-              <div className="table-wrap">
+            <div className="table-wrap">
                 <table style={{ tableLayout: "fixed" }}>
                   <colgroup>
                     <col style={{ width: 120 }} />
@@ -507,7 +508,7 @@ export default function ApprovePage() {
                       ) : (
                         <tr key={i}>
                           <td>
-                            <span className="badge badge-muted">{rec.category}</span>
+                            <span className={`badge ${categoryBadgeClass(rec.category)}`}>{rec.category}</span>
                           </td>
                           <td>{rec.description}</td>
                           <td
@@ -524,15 +525,14 @@ export default function ApprovePage() {
                           </td>
                           <td style={{ whiteSpace: "nowrap" }}>
                             <button
-                              className="btn btn-ghost"
+                              className="row-action-edit"
                               onClick={() => setEditingIndex(i)}
                               disabled={isSubmitting}
                             >
                               Edit
                             </button>
                             <button
-                              className="btn btn-ghost"
-                              style={{ color: "var(--danger)" }}
+                              className="row-action-delete"
                               onClick={() => deleteRecord(i)}
                               disabled={isSubmitting}
                             >
@@ -545,7 +545,6 @@ export default function ApprovePage() {
                   </tbody>
                 </table>
               </div>
-            </div>
           )}
         </section>
       </div>
@@ -601,6 +600,23 @@ export default function ApprovePage() {
       </div>
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Category → badge CSS class mapping (Row 9)
+// ---------------------------------------------------------------------------
+
+function categoryBadgeClass(category: string): string {
+  const map: Record<string, string> = {
+    "Problems":       "badge-cat-problems",
+    "Risks":          "badge-cat-risks",
+    "Changes":        "badge-cat-changes",
+    "Decisions":      "badge-cat-decisions",
+    "Conclusions":    "badge-cat-conclusions",
+    "Action items":   "badge-cat-action-items",
+    "Things to know": "badge-cat-things-to-know",
+  };
+  return map[category] ?? "badge-muted";
 }
 
 // ---------------------------------------------------------------------------

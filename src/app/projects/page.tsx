@@ -217,7 +217,7 @@ export default function ProjectsPage() {
       {/* Create form */}
       {showForm && (
         <div className="card mb-24">
-          <h2 style={{ fontSize: 15, fontWeight: 600, marginBottom: 16 }}>
+          <h2 className="section-heading" style={{ marginBottom: 16 }}>
             New project
           </h2>
           <form onSubmit={handleCreate}>
@@ -261,7 +261,7 @@ export default function ProjectsPage() {
             editingId === project.id ? (
               // Inline edit form
               <div key={project.id} className="card">
-                <h2 style={{ fontSize: 15, fontWeight: 600, marginBottom: 16 }}>
+                <h2 className="section-heading" style={{ marginBottom: 16 }}>
                   Edit {project.name}
                 </h2>
                 <form onSubmit={handleUpdate}>
@@ -315,28 +315,34 @@ export default function ProjectsPage() {
                     display: "grid",
                     gridTemplateColumns: "max-content 1fr",
                     gap: "6px 24px",
-                    fontSize: 13,
                   }}
                 >
-                  <span className="text-muted">Slack channel</span>
-                  <span>#{project.slack_channel_name} <span className="text-muted">({project.slack_channel_id})</span></span>
-                  <span className="text-muted">Destination</span>
-                  <span>
+                  <span style={{ fontFamily: "var(--font-patrick), 'Patrick Hand', cursive", fontSize: 18, opacity: 0.6 }}>Slack channel</span>
+                  <span style={{ fontFamily: "var(--font-patrick), 'Patrick Hand', cursive", fontSize: 20 }}>
+                    #{project.slack_channel_name}{" "}
+                    <code style={{ background: "#FFF8E1", border: "1.5px dashed #1a1a1a", padding: "1px 6px", borderRadius: 3, fontFamily: "var(--font-geist-mono), monospace", fontSize: 14 }}>{project.slack_channel_id}</code>
+                  </span>
+                  <span style={{ fontFamily: "var(--font-patrick), 'Patrick Hand', cursive", fontSize: 18, opacity: 0.6 }}>Destination</span>
+                  <span style={{ fontFamily: "var(--font-patrick), 'Patrick Hand', cursive", fontSize: 20 }}>
                     {project.destination_name}{" "}
-                    <span className="text-muted">
+                    <span style={{ opacity: 0.6 }}>
                       ({project.destination_type === "notion" ? "Notion" : "Google Sheets"})
                     </span>
                   </span>
-                  <span className="text-muted">Destination ID</span>
-                  <span
+                  <span style={{ fontFamily: "var(--font-patrick), 'Patrick Hand', cursive", fontSize: 18, opacity: 0.6 }}>Destination ID</span>
+                  <code
                     style={{
+                      background: "#FFF8E1",
+                      border: "1.5px dashed #1a1a1a",
+                      padding: "1px 6px",
+                      borderRadius: 3,
                       fontFamily: "var(--font-geist-mono), monospace",
-                      fontSize: 12,
+                      fontSize: 14,
                       wordBreak: "break-all",
                     }}
                   >
                     {project.destination_id}
-                  </span>
+                  </code>
                 </div>
               </div>
             )

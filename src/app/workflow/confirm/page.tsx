@@ -204,7 +204,7 @@ export default function ConfirmPage() {
           />
         </div>
         {!noEvent && (
-          <p className="text-muted text-sm" style={{ marginTop: 10 }}>
+          <p className="helper-text" style={{ marginTop: 10 }}>
             Calendar event: <strong>{eventTitle}</strong> · {formatDate(eventDate)} at{" "}
             {formatTime(eventStartTime)} · {eventDurationMinutes} min
           </p>
@@ -213,7 +213,7 @@ export default function ConfirmPage() {
 
       {/* Doc selection */}
       <section className="mb-24">
-        <h2 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>Gemini Notes Doc</h2>
+        <h2 className="section-heading" style={{ marginBottom: 12 }}>Gemini Notes Doc</h2>
 
         {candidates.length > 0 && !useManual && (
           <>
@@ -259,7 +259,7 @@ export default function ConfirmPage() {
               </div>
             </div>
             <button
-              className="btn btn-ghost text-sm"
+              className="text-link"
               onClick={() => setUseManual(true)}
             >
               Use a different Doc
@@ -279,8 +279,8 @@ export default function ConfirmPage() {
             />
             {candidates.length > 0 && (
               <button
-                className="btn btn-ghost text-sm"
-                style={{ marginTop: 4, padding: "4px 0" }}
+                className="text-link"
+                style={{ marginTop: 4 }}
                 onClick={() => {
                   setUseManual(false);
                   setManualDocId("");
@@ -302,7 +302,7 @@ export default function ConfirmPage() {
           ) : projects.length === 0 ? (
             <p className="text-muted text-sm">
               No projects configured.{" "}
-              <a href="/projects" style={{ color: "var(--primary)" }}>
+              <a href="/projects" className="text-link">
                 Create one first.
               </a>
             </p>
