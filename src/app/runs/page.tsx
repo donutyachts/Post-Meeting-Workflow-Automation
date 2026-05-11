@@ -1,12 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { triggerState } from "@/lib/workflow-state";
 import type { WorkflowRun } from "@/types/workflow-run";
 
+type TriggerStatus = "idle" | "loading" | "no_event" | "error";
+
 export default function RunsPage() {
+  const router = useRouter();
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+
+  const [triggerStatus, setTriggerStatus] = useState<TriggerStatus>("idle");
+  const [triggerError, setTriggerError] = useState("");
 
   useEffect(() => {
     fetch("/api/runs")
@@ -16,9 +24,85 @@ export default function RunsPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  async function handleTrigger() {
+    setTriggerStatus("loading");
+    setTriggerError("");
+
+    try {
+      const res = await fetch("/api/workflow/trigger", { method: "POST" });
+      const data = await res.json();
+
+      if (res.status === 404 && data.error === "NO_RECENT_EVENT") {
+        setTriggerStatus("no_event");
+        return;
+      }
+
+      if (!res.ok) {
+        setTriggerError(data.message ?? data.error ?? "An error occurred.");
+        setTriggerStatus("error");
+        return;
+      }
+
+      triggerState.save({ event: data.event, matches: data.matches });
+      router.push("/workflow/confirm");
+    } catch {
+      setTriggerError("Network error — could not reach the server.");
+      setTriggerStatus("error");
+    }
+  }
+
   return (
     <div className="page">
-      <h1 className="page-title">Run history</h1>
+      <div className="flex items-center justify-between mb-24">
+        <h1 className="page-title" style={{ marginBottom: 0 }}>Run history</h1>
+        <button
+          className="btn btn-primary"
+          onClick={handleTrigger}
+          disabled={triggerStatus === "loading"}
+        >
+          {triggerStatus === "loading" ? (
+            <><span className="spinner" /> Searching…</>
+          ) : (
+            "Run workflow"
+          )}
+        </button>
+      </div>
+
+      {triggerStatus === "no_event" && (
+        <div className="alert alert-info mb-16">
+          <strong>No recent event found.</strong> No organizer-owned Calendar
+          events were found in the past 30 days. You can select the Doc
+          manually on the next screen.
+          <div style={{ marginTop: 12 }}>
+            <button
+              className="btn btn-secondary"
+              onClick={() => {
+                triggerState.save({
+                  event: { title: "", date: "", start_time: "", duration_minutes: 0 },
+                  matches: [],
+                });
+                router.push("/workflow/confirm");
+              }}
+            >
+              Select Doc manually
+            </button>
+          </div>
+        </div>
+      )}
+
+      {triggerStatus === "error" && (
+        <div className="alert alert-error mb-16">
+          <strong>Error:</strong> {triggerError}
+          <div style={{ marginTop: 12 }}>
+            <button
+              className="btn btn-secondary"
+              onClick={() => setTriggerStatus("idle")}
+            >
+              Try again
+            </button>
+          </div>
+        </div>
+      )}
 
       {errorMessage && (
         <div className="alert alert-error mb-16">{errorMessage}</div>
